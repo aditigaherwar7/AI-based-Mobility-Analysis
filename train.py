@@ -62,10 +62,16 @@ for e in range(setting.epochs):
         y_t = y_t.squeeze().to(setting.device)
         y_s = y_s.squeeze().to(setting.device)                
         active_users = active_users.to(setting.device)
-        
+        # IMPORTANT: detach hidden state from previous batch graph
+if h is not None:
+    if isinstance(h, tuple):  # LSTM: (h, c)
+        h = (h[0].detach(), h[1].detach())
+    else:  # RNN/GRU
+        h = h.detach()
+
         optimizer.zero_grad()
         loss, h = trainer.loss(x, t, s, y, y_t, y_s, h, active_users)
-        loss.backward(retain_graph=True)
+        loss.backward()
         losses.append(loss.item())
         optimizer.step()
     
