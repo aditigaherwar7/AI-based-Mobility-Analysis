@@ -3,3 +3,7 @@ __pycache__/
 
 # ommit datasets
 data/*.txt
+# datasets (too large for GitHub)
+data/**/*.txt
+data/gowalla/
+data/4sq/
