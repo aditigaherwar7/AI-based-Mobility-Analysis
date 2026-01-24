@@ -1,3 +1,2 @@
-Training ran on Gowalla (7768 users)
-Completed 2 epochs
-Avg loss printed
+Loaded Gowalla dataset (train/test split created successfully)
+Ran training for 2 epochs on CPU
