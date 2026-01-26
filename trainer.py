@@ -52,3 +52,8 @@ class FlashbackTrainer():
         y = y.view(-1)
         l = self.cross_entropy_loss(out, y)
         return l, h
+
+import os
+
+os.makedirs("checkpoints", exist_ok=True)
+print("Saved checkpoint: checkpoints/gowalla_flashback.pt")

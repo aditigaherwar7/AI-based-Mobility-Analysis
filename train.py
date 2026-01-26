@@ -63,6 +63,14 @@ for e in range(setting.epochs):
         y_s = y_s.squeeze().to(setting.device)                
         active_users = active_users.to(setting.device)
         # IMPORTANT: detach hidden state from previous batch graph
+# Save trained model (Day 12)
+import os
+import torch
+
+os.makedirs("checkpoints", exist_ok=True)
+torch.save(trainer.model.state_dict(), "checkpoints/gowalla_flashback.pt")
+print("Saved checkpoint: checkpoints/gowalla_flashback.pt")
+
 if h is not None:
     if isinstance(h, tuple):  # LSTM: (h, c)
         h = (h[0].detach(), h[1].detach())
