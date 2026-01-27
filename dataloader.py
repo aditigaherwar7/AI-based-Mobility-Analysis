@@ -14,7 +14,9 @@ class PoiDataloader():
     Check-ins for the same user have to be on continous lines.
     Ids for users and locations are recreated and continous from 0.
     '''
-    
+    def get_coord(self, loc_id):
+        return self.id2coord.get(loc_id, None)
+
     def __init__(self, max_users=0, min_checkins=0):
         ''' max_users limits the amount of users to load.
         min_checkins discards users with less than this amount of checkins.               
@@ -25,11 +27,13 @@ class PoiDataloader():
         
         self.user2id = {}
         self.poi2id = {}
-        
+     
         self.users = []
         self.times = []
         self.coords = []
         self.locs = []
+        self.id2coord = {}
+
     
     def create_dataset(self, sequence_length, batch_size, split, usage=Usage.MAX_SEQ_LENGTH, custom_seq_count=1):
         return PoiDataset(self.users.copy(),\
@@ -105,8 +109,10 @@ class PoiDataloader():
             coord = (lat, long)            
 
             location = int(tokens[4]) # location nr
-            if self.poi2id.get(location) is None: # get-or-set locations
-                self.poi2id[location] = len(self.poi2id)
+            if self.poi2id.get(location) is None:
+                new_id = len(self.poi2id)
+                self.poi2id[location] = new_id
+                self.id2coord[new_id] = coord
             location = self.poi2id.get(location)
     
             if user == prev_user:
@@ -131,3 +137,6 @@ class PoiDataloader():
         self.times.append(user_time)
         self.coords.append(user_coord)
         self.locs.append(user_loc)
+def get_coord(self, loc_id):
+    return self.id2coord.get(loc_id, None)
+
