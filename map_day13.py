@@ -81,7 +81,7 @@ def main():
     print("\nSaved:", out_file)
     print("Predicted LocationID:", pred_loc, "->", pred_coord)
     print("True LocationID:", true_loc, "->", true_coord)
-
+    
 
 if __name__ == "__main__":
     main()
