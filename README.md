@@ -34,3 +34,9 @@ outperforms state-of-the-art RNNs involving
 spatiotemporal factors by 15.9% to 27.6% in the
 next location prediction task.
 
+## Recent Progress (Feb 2026)
+
+Studied mobility prediction and data analysis methods
+Tested training pipeline on Gowalla dataset
+Implemented basic location mapping visualization
+Reviewed research papers related to mobility modeling
