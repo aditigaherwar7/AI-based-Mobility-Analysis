@@ -1,3 +1,4 @@
+import os
 import torch
 from torch.utils.data import DataLoader
 
@@ -71,7 +72,22 @@ def main():
     if y.numel() > 0:
         true_loc = y.view(-1)[-1].item()
         print(f"\nTrue next location: {true_loc}")
+    if y.numel() > 0:
+        true_loc = y.view(-1)[-1].item()
+        print(f"\nTrue next location: {true_loc}")
+
+    # Save results to file (INSIDE main)
+    os.makedirs("results", exist_ok=True)
+    with open("results/topk_prediction_sample.txt", "w", encoding="utf-8") as f:
+        f.write(f"Top-{TOP_K} predicted next locations:\n")
+        for i, (loc, sc) in enumerate(zip(idx.tolist(), scores.tolist()), 1):
+            f.write(f"{i}. LocationID={loc} | score={sc:.4f}\n")
+
+        if y.numel() > 0:
+            true_loc = y.view(-1)[-1].item()
+            f.write(f"\nTrue next location: {true_loc}\n")
 
 
 if __name__ == "__main__":
     main()
+

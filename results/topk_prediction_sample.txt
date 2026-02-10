@@ -1,0 +1,8 @@
+Top-5 predicted next locations:
+1. LocationID=19662 | score=1.8413
+2. LocationID=12049 | score=1.7591
+3. LocationID=14449 | score=1.6595
+4. LocationID=32139 | score=1.6391
+5. LocationID=41891 | score=1.6383
+
+True next location: 8183
