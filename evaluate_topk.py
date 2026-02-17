@@ -9,8 +9,43 @@ from trainer import FlashbackTrainer
 CKPT_PATH = "checkpoints/gowalla_flashback.pt"
 TOP_K = 5
 MAX_BATCHES = 50
-USER_IDX = 0
 DEBUG_FIRST = True
+
+
+def pick_scores_last(out: torch.Tensor, seq_len: int, batch_users: int) -> torch.Tensor:
+    """
+    Returns scores for the last timestep with shape (batch_users, loc_count),
+    regardless of whether out is (seq_len, batch_users, loc) or (batch_users, seq_len, loc),
+    or flattened.
+    """
+    if out.dim() == 3:
+        a, b, loc = out.shape
+
+        # Case 1: (seq_len, batch_users, loc)
+        if a == seq_len and b == batch_users:
+            return out[-1]  # (batch_users, loc)
+
+        # Case 2: (batch_users, seq_len, loc)
+        if a == batch_users and b == seq_len:
+            return out[:, -1, :]  # (batch_users, loc)
+
+        raise RuntimeError(f"Unexpected 3D out shape {tuple(out.shape)} for seq_len={seq_len}, batch_users={batch_users}")
+
+    if out.dim() == 2:
+        n, loc = out.shape
+
+        # Flattened case: (seq_len*batch_users, loc)
+        if n == seq_len * batch_users:
+            out3 = out.reshape(seq_len, batch_users, loc)
+            return out3[-1]  # (batch_users, loc)
+
+        # Already last-step: (batch_users, loc)
+        if n == batch_users:
+            return out  # (batch_users, loc)
+
+        raise RuntimeError(f"Unexpected 2D out shape {tuple(out.shape)} for seq_len={seq_len}, batch_users={batch_users}")
+
+    raise RuntimeError(f"Unexpected out dims {out.dim()} with shape {tuple(out.shape)}")
 
 
 def main():
@@ -21,11 +56,7 @@ def main():
     poi_loader = PoiDataloader(setting.max_users, setting.min_checkins)
     poi_loader.read(setting.dataset_file)
 
-    dataset_test = poi_loader.create_dataset(
-        setting.sequence_length,
-        setting.batch_size,
-        Split.TEST
-    )
+    dataset_test = poi_loader.create_dataset(setting.sequence_length, setting.batch_size, Split.TEST)
     dataloader_test = DataLoader(dataset_test, batch_size=1, shuffle=False)
 
     # Build trainer/model
@@ -43,8 +74,8 @@ def main():
     trainer.model.load_state_dict(state)
     trainer.model.eval()
 
-    total = 0
-    correct_topk = 0
+    total_users = 0
+    hit_users = 0
 
     global DEBUG_FIRST
 
@@ -61,34 +92,35 @@ def main():
             y_s = batch[5].squeeze().to(setting.device)
             active_users = batch[7].to(setting.device)
 
-            h = None
+            seq_len, batch_users = y.shape  # expected (20, 200)
 
-            # Predict scores for all timesteps/users
-            out, h = trainer.evaluate(x, t, s, y_t, y_s, h, active_users)
+            out, _ = trainer.evaluate(x, t, s, y_t, y_s, None, active_users)
 
-            # out should be [seq_len, batch_users, loc_count]
-            # Pick last timestep and one user for evaluation
-            last_scores = out[-1, USER_IDX, :]  # (loc_count,)
-            _, idx = torch.topk(last_scores, k=TOP_K)
+            # get (batch_users, loc_count) scores for last timestep
+            scores_last = pick_scores_last(out, seq_len=seq_len, batch_users=batch_users)
 
-            # True label for same timestep/user
-            true_loc = int(y[-1, USER_IDX].item())
+            # labels for last timestep: (batch_users,)
+            labels_last = x[-1].reshape(-1).long()
+
+            # top-k: (batch_users, TOP_K)
+            topk_idx = torch.topk(scores_last, k=TOP_K, dim=1).indices
+
+            # hit@k: (batch_users,)
+            hits = (topk_idx == labels_last.unsqueeze(1)).any(dim=1)
+            hit_users += int(hits.sum().item())
+            total_users += int(hits.numel())
 
             if DEBUG_FIRST:
-                print("\n[DEBUG] Shapes:")
-                print("out:", tuple(out.shape))
-                print("x:", tuple(x.shape))
-                print("y:", tuple(y.shape))
-                print("TopK idx sample:", idx[:5].tolist())
-                print("True loc (y[-1,USER_IDX]):", true_loc)
+                print("\n[DEBUG]")
+                print("y shape:", tuple(y.shape))
+                print("out shape:", tuple(out.shape))
+                print("scores_last shape:", tuple(scores_last.shape))
+                print("labels_last shape:", tuple(labels_last.shape))
+                print("sample topk:", topk_idx[0].tolist(), " true:", int(labels_last[0].item()))
                 DEBUG_FIRST = False
 
-            if true_loc in idx.tolist():
-                correct_topk += 1
-            total += 1
-
-    acc = correct_topk / total if total > 0 else 0
-    print(f"\nTop-{TOP_K} Accuracy over {total} samples: {acc:.4f}")
+    acc = hit_users / total_users if total_users > 0 else 0.0
+    print(f"\nHit@{TOP_K} over {total_users} user-samples (across {MAX_BATCHES} batches): {acc:.4f}")
 
 
 if __name__ == "__main__":
