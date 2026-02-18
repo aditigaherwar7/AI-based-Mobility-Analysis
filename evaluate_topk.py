@@ -100,7 +100,7 @@ def main():
             scores_last = pick_scores_last(out, seq_len=seq_len, batch_users=batch_users)
 
             # labels for last timestep: (batch_users,)
-            labels_last = x[-1].reshape(-1).long()
+            labels_last = [-1].reshape(-1).long()
 
             # top-k: (batch_users, TOP_K)
             topk_idx = torch.topk(scores_last, k=TOP_K, dim=1).indices
