@@ -7,3 +7,4 @@ data/*.txt
 data/**/*.txt
 data/gowalla/
 data/4sq/
+checkpoints/
