@@ -69,21 +69,18 @@ class Flashback(nn.Module):
         x_emb = self.encoder(x)        
         out, h = self.rnn(x_emb, h)
         
-        # comopute weights per user
+        # compute weights per user
         out_w = torch.zeros(seq_len, user_len, self.hidden_size, device=x.device)
         for i in range(seq_len):
             sum_w = torch.zeros(user_len, 1, device=x.device)
             for j in range(i+1):
                 dist_t = t[i] - t[j]
                 dist_s = torch.norm(s[i] - s[j], dim=-1)
-                a_j = self.f_t(dist_t, user_len)
-                b_j = self.f_s(dist_s, user_len)
-                a_j = a_j.unsqueeze(1)
-                b_j = b_j.unsqueeze(1)
-                w_j = a_j*b_j + 1e-10 # small epsilon to avoid 0 division
+                a_j = self.f_t(dist_t, user_len).unsqueeze(1)
+                b_j = self.f_s(dist_s, user_len).unsqueeze(1)
+                w_j = a_j * b_j + 1e-10  # avoid divide-by-zero in normalization
                 sum_w += w_j
-                out_w[i] += w_j*out[j]
-            # normliaze according to weights
+                out_w[i] += w_j * out[j]
             out_w[i] /= sum_w
         
         # add user embedding:

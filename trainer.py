@@ -48,12 +48,8 @@ class FlashbackTrainer():
         
         self.model.train()
         out, h = self.model(x, t, s, y_t, y_s, h, active_users)
-        out = out.view(-1, self.loc_count)
-        y = y.view(-1)
+        out = out.reshape(-1, self.loc_count)
+        y = y.reshape(-1)
         l = self.cross_entropy_loss(out, y)
         return l, h
 
-import os
-
-os.makedirs("checkpoints", exist_ok=True)
-print("Saved checkpoint: checkpoints/gowalla_flashback.pt")

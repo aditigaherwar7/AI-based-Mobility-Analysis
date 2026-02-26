@@ -32,6 +32,8 @@ class Setting:
         self.is_lstm = self.rnn_factory.is_lstm()
         self.lambda_t = args.lambda_t
         self.lambda_s = args.lambda_s
+        self.train_user_chunk = args.train_user_chunk
+        self.eval_user_chunk = args.eval_user_chunk
         
         # data management
         self.dataset_file = './data/{}'.format(args.dataset)
@@ -45,16 +47,25 @@ class Setting:
         self.report_user = args.report_user        
      
         ### CUDA Setup ###
-        self.device = torch.device('cpu') if args.gpu == -1 else torch.device('cuda', args.gpu)        
+        # --gpu -1 forces CPU, otherwise prefer CUDA when available.
+        if args.gpu == -1:
+            self.device = torch.device('cpu')
+        elif torch.cuda.is_available():
+            gpu_index = 0 if args.gpu is None else args.gpu
+            self.device = torch.device('cuda', gpu_index)
+        else:
+            self.device = torch.device('cpu')
     
     def parse_arguments(self, parser):        
         # training
-        parser.add_argument('--gpu', default=-1, type=int, help='the gpu to use')        
-        parser.add_argument('--hidden-dim', default=10, type=int, help='hidden dimensions to use')
+        parser.add_argument('--gpu', default=None, type=int, help='GPU index to use, -1 for CPU (default: auto)')        
+        parser.add_argument('--hidden-dim', default=64, type=int)
         parser.add_argument('--weight_decay', default=0.0, type=float, help='weight decay regularization')
-        parser.add_argument('--lr', default = 0.01, type=float, help='learning rate')
+        parser.add_argument('--lr', default=0.001, type=float)
         parser.add_argument('--epochs', default=100, type=int, help='amount of epochs')
-        parser.add_argument('--rnn', default='rnn', type=str, help='the GRU implementation to use: [rnn|gru|lstm]')        
+        parser.add_argument('--rnn', default='gru', type=str)        
+        parser.add_argument('--train-user-chunk', default=None, type=int, help='max users per optimization chunk (default: 8 on CUDA, full batch on CPU)')
+        parser.add_argument('--eval-user-chunk', default=None, type=int, help='max users per evaluation chunk (default: 8 on CUDA, full batch on CPU)')
         
         # data management
         parser.add_argument('--dataset', default='checkins-gowalla.txt', type=str, help='the dataset under ./data/<dataset.txt> to load')        

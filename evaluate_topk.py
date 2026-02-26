@@ -98,9 +98,11 @@ def main():
 
             # get (batch_users, loc_count) scores for last timestep
             scores_last = pick_scores_last(out, seq_len=seq_len, batch_users=batch_users)
-
+             
             # labels for last timestep: (batch_users,)
-            labels_last = [-1].reshape(-1).long()
+            labels_last = y[-1].reshape(-1).long()
+            print("label min/max:", int(labels_last.min().item()), int(labels_last.max().item()))
+            print("loc_count:", scores_last.shape[1])
 
             # top-k: (batch_users, TOP_K)
             topk_idx = torch.topk(scores_last, k=TOP_K, dim=1).indices
@@ -120,8 +122,8 @@ def main():
                 DEBUG_FIRST = False
 
     acc = hit_users / total_users if total_users > 0 else 0.0
-    print(f"\nHit@{TOP_K} over {total_users} user-samples (across {MAX_BATCHES} batches): {acc:.4f}")
-
+    print(f"\nHit@{TOP_K} over {total_users} user-samples (across {MAX_BATCHES} batches): {acc:.8f}")
+    print(f"Hits: {hit_users} / {total_users}")
 
 if __name__ == "__main__":
     main()
