@@ -135,8 +135,6 @@ for e in range(setting.epochs):
         print(f'Avg Loss: {epoch_loss}')
     if (e+1) % setting.validate_epoch == 0:        
         print(f'~~~ Test Set Evaluation (Epoch: {e+1}) ~~~')
-        if setting.device.type == 'cuda':
-            torch.cuda.empty_cache()
         evaluation_test.evaluate()
 
 os.makedirs("checkpoints", exist_ok=True)
