@@ -1,1 +1,3 @@
-worked on different dataset and analysed different architectures   
+worked on different dataset and analysed different architectures
+
+made the graph prediction strong, and worked on several analysis of the user location
