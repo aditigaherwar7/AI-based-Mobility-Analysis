@@ -1,432 +1,678 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Flashback Mobility Prediction Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css" />
-  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body {
-      margin: 0;
-      background: #f5f7fb;
-      color: #1f2937;
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-    }
-    .dashboard {
-      max-width: 1280px;
-      margin: 0 auto;
-      padding: 24px 16px 32px;
-    }
-    .page-title {
-      font-size: 1.9rem;
-      font-weight: 700;
-      margin-bottom: 18px;
-    }
-    .panel-card {
-      border: none;
-      border-radius: 14px;
-      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1);
-      background: #ffffff;
-      height: 100%;
-    }
-    .chart-wrap {
-      height: 300px;
-    }
-    .toolbar {
-      margin: 18px 0 14px;
-    }
-    .map-wrapper {
-      position: relative;
-      border-radius: 14px;
-      overflow: hidden;
-      box-shadow: 0 8px 24px rgba(10, 30, 60, 0.15);
-      background: #ffffff;
-    }
-    #map {
-      width: 100%;
-      height: 68vh;
-      min-height: 540px;
-    }
-    .summary-overlay {
-      position: absolute;
-      z-index: 1000;
-      top: 14px;
-      left: 14px;
-      background: #ffffff;
-      border-radius: 10px;
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
-      padding: 12px 14px;
-      min-width: 240px;
-    }
-    .summary-overlay h6 {
-      margin: 0 0 8px;
-      font-weight: 700;
-    }
-    .summary-overlay p {
-      margin: 2px 0;
-      font-size: 0.92rem;
-    }
-    .status-message {
-      margin-top: 8px;
-      font-size: 0.92rem;
-      min-height: 22px;
-    }
-    .map-legend {
-      background: #ffffff;
-      padding: 10px 12px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-      line-height: 1.7;
-      font-size: 0.88rem;
-    }
-    .legend-dot {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      margin-right: 8px;
-      vertical-align: middle;
-    }
-    .legend-line {
-      display: inline-block;
-      width: 16px;
-      height: 0;
-      border-top: 3px solid #0d6efd;
-      margin-right: 8px;
-      vertical-align: middle;
-    }
-  </style>
-</head>
-<body>
-  <main class="dashboard">
-    <h1 class="page-title">Flashback Mobility Prediction Dashboard</h1>
-
-    <section>
-      <h2 class="h4 mb-3">Training Performance</h2>
-      <div class="row g-3">
-        <div class="col-12 col-lg-6">
-          <div class="card panel-card p-3">
-            <h3 class="h6 mb-2">Training Loss vs Epoch</h3>
-            <div class="chart-wrap"><canvas id="lossChart"></canvas></div>
-          </div>
-        </div>
-        <div class="col-12 col-lg-6">
-          <div class="card panel-card p-3">
-            <h3 class="h6 mb-2">Evaluation Metrics</h3>
-            <div class="chart-wrap"><canvas id="metricsChart"></canvas></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="toolbar">
-      <div class="row g-3 align-items-end">
-        <div class="col-12 col-md-5 col-lg-4">
-          <label for="userSelect" class="form-label fw-semibold">Select User</label>
-          <select id="userSelect" class="form-select"></select>
-        </div>
-        <div class="col-12 col-md-7 col-lg-8">
-          <div id="statusMessage" class="status-message text-muted">Loading prediction data...</div>
-        </div>
-      </div>
-    </section>
-
-    <section>
-      <h2 class="h4 mb-3">Spatial Prediction Visualization</h2>
-      <div class="map-wrapper">
-        <div class="summary-overlay">
-          <h6>Model Summary</h6>
-          <p><strong>User ID:</strong> <span id="summaryUser">-</span></p>
-          <p><strong>Sequence Length:</strong> <span id="summarySeqLen">-</span></p>
-          <p><strong>Recall@10:</strong> 0.351</p>
-          <p><strong>MAP:</strong> 0.196</p>
-          <p><strong>GPU:</strong> CUDA Enabled</p>
-        </div>
-        <div id="map"></div>
-      </div>
-    </section>
-  </main>
-
-  <script>
-    const LOSS_VALUES = [11.17, 9.47, 7.76, 6.43, 5.54];
-    const METRIC_LABELS = ["Recall@1", "Recall@5", "Recall@10", "MAP"];
-    const METRIC_VALUES = [0.119, 0.284, 0.351, 0.196];
-
-    const userSelect = document.getElementById("userSelect");
-    const statusMessage = document.getElementById("statusMessage");
-
-    const map = L.map("map", {
-      center: [40.72, -73.98],
-      zoom: 12,
-      zoomControl: true,
-      preferCanvas: false
-    });
-
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
-
-    let layers = [];
-
-    function setStatus(message, isError) {
-      statusMessage.textContent = message;
-      statusMessage.className = isError ? "status-message text-danger" : "status-message text-muted";
-    }
-
-    function updateSummary(user) {
-      document.getElementById("summaryUser").textContent = user ? user.user_id : "-";
-      document.getElementById("summarySeqLen").textContent = user ? user.sequence_length : "-";
-    }
-
-    function clearMap() {
-      layers.forEach((layer) => map.removeLayer(layer));
-      layers = [];
-    }
-
-    function haversine(lat1, lon1, lat2, lon2) {
-      const R = 6371;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(lat1 * Math.PI / 180) *
-        Math.cos(lat2 * Math.PI / 180) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return (R * c).toFixed(2);
-    }
-
-    function addLayer(layer) {
-      layer.addTo(map);
-      layers.push(layer);
-      return layer;
-    }
-
-    function renderUser(user) {
-      clearMap();
-
-      if (!user || !Array.isArray(user.visited) || user.visited.length === 0 || !user.predicted || !user.true_next) {
-        updateSummary(null);
-        setStatus("No usable location data for selected user.", true);
-        return;
-      }
-
-      updateSummary(user);
-
-      const boundsPoints = [];
-      const visitedPath = [];
-
-      user.visited.forEach((point) => {
-        if (typeof point.lat !== "number" || typeof point.lng !== "number") {
-          return;
-        }
-        const latLng = [point.lat, point.lng];
-        visitedPath.push(latLng);
-        boundsPoints.push(latLng);
-
-        const visitedMarker = L.circleMarker(latLng, {
-          color: "#3388ff",
-          fillColor: "#3388ff",
-          fillOpacity: 0.25,
-          radius: 4,
-          weight: 2
-        }).bindPopup("Visited");
-
-        addLayer(visitedMarker);
-      });
-
-      if (visitedPath.length > 1) {
-        const trajectory = L.polyline(visitedPath, {
-          color: "#0d6efd",
-          weight: 3,
-          opacity: 0.9
-        }).bindTooltip("User Historical Trajectory");
-
-        addLayer(trajectory);
-      }
-
-      const predicted = user.predicted;
-      const truth = user.true_next;
-
-      if (typeof predicted.lat !== "number" || typeof predicted.lng !== "number" ||
-          typeof truth.lat !== "number" || typeof truth.lng !== "number") {
-        setStatus("Selected user has invalid predicted/true coordinates.", true);
-        return;
-      }
-
-      const errorKm = haversine(predicted.lat, predicted.lng, truth.lat, truth.lng);
-      const confidencePercent = (predicted.confidence * 100).toFixed(1);
-
-      const redIcon = L.icon({
-        iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
-        shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.3/images/marker-shadow.png",
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-      });
-
-      const greenIcon = L.icon({
-        iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
-        shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.3/images/marker-shadow.png",
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-      });
-
-      const predMarker = L.marker([predicted.lat, predicted.lng], { icon: redIcon })
-        .bindPopup(`Predicted Next<br>Prediction Error: ${errorKm} km<br>Confidence: ${confidencePercent}%`);
-      addLayer(predMarker);
-
-      const trueMarker = L.marker([truth.lat, truth.lng], { icon: greenIcon })
-        .bindPopup("True Next");
-      addLayer(trueMarker);
-
-      boundsPoints.push([predicted.lat, predicted.lng]);
-      boundsPoints.push([truth.lat, truth.lng]);
-
-      if (boundsPoints.length > 0) {
-        map.fitBounds(boundsPoints, { padding: [35, 35] });
-      }
-
-      setStatus(`Rendered user ${user.user_id} | Prediction Error: ${errorKm} km`, false);
-      predMarker.openPopup();
-    }
-
-    function initializeDropdown(users) {
-      userSelect.innerHTML = "";
-
-      if (!Array.isArray(users) || users.length === 0) {
-        updateSummary(null);
-        setStatus("No users found in predictions JSON.", true);
-        const option = document.createElement("option");
-        option.textContent = "No users available";
-        option.value = "";
-        userSelect.appendChild(option);
-        userSelect.disabled = true;
-        return;
-      }
-
-      users.forEach((user, index) => {
-        const option = document.createElement("option");
-        option.value = String(index);
-        option.textContent = `User ${user.user_id}`;
-        userSelect.appendChild(option);
-      });
-
-      userSelect.disabled = false;
-      userSelect.onchange = function () {
-        const index = Number(userSelect.value);
-        renderUser(window.predictionData.users[index]);
-      };
-
-      userSelect.value = "0";
-      renderUser(users[0]);
-    }
-
-    function createCharts() {
-      const lossCtx = document.getElementById("lossChart");
-      const metricsCtx = document.getElementById("metricsChart");
-
-      const lossChart = new Chart(lossCtx, {
-        type: "line",
-        data: {
-          labels: [1, 2, 3, 4, 5],
-          datasets: [{
-            label: "Loss",
-            data: LOSS_VALUES,
-            borderColor: "#0d6efd",
-            backgroundColor: "rgba(13,110,253,0.14)",
-            pointBackgroundColor: "#0d6efd",
-            fill: true,
-            tension: 0.2
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: true }
-          },
-          scales: {
-            x: { title: { display: true, text: "Epoch" } },
-            y: { title: { display: true, text: "Loss" } }
-          }
-        }
-      });
-
-      const metricsChart = new Chart(metricsCtx, {
-        type: "bar",
-        data: {
-          labels: METRIC_LABELS,
-          datasets: [{
-            label: "Score",
-            data: METRIC_VALUES,
-            backgroundColor: ["#0d6efd", "#198754", "#0dcaf0", "#fd7e14"],
-            borderRadius: 6
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: true }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              suggestedMax: 0.4,
-              title: { display: true, text: "Score" }
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Flashback Mobility Prediction Dashboard</title>
+        <link
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+            rel="stylesheet"
+        />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"
+        />
+        <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <style>
+            body {
+                margin: 0;
+                background: #f5f7fb;
+                color: #1f2937;
+                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
             }
-          }
-        }
-      });
+            .dashboard {
+                max-width: 1280px;
+                margin: 0 auto;
+                padding: 24px 16px 32px;
+            }
+            .page-title {
+                font-size: 1.9rem;
+                font-weight: 700;
+                margin-bottom: 18px;
+            }
+            .panel-card {
+                border: none;
+                border-radius: 14px;
+                box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1);
+                background: #ffffff;
+                height: 100%;
+            }
+            .chart-wrap {
+                height: 300px;
+            }
+            .toolbar {
+                margin: 18px 0 14px;
+            }
+            .map-wrapper {
+                position: relative;
+                border-radius: 14px;
+                overflow: hidden;
+                box-shadow: 0 8px 24px rgba(10, 30, 60, 0.15);
+                background: #ffffff;
+            }
+            #map {
+                width: 100%;
+                height: 68vh;
+                min-height: 540px;
+            }
+            .summary-overlay {
+                position: absolute;
+                z-index: 1000;
+                top: 14px;
+                left: 14px;
+                background: #ffffff;
+                border-radius: 10px;
+                box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+                padding: 12px 14px;
+                min-width: 240px;
+            }
+            .summary-overlay h6 {
+                margin: 0 0 8px;
+                font-weight: 700;
+            }
+            .summary-overlay p {
+                margin: 2px 0;
+                font-size: 0.92rem;
+            }
+            .status-message {
+                margin-top: 8px;
+                font-size: 0.92rem;
+                min-height: 22px;
+            }
+            .map-legend {
+                background: #ffffff;
+                padding: 10px 12px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+                line-height: 1.7;
+                font-size: 0.88rem;
+            }
+            .legend-dot {
+                display: inline-block;
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                margin-right: 8px;
+                vertical-align: middle;
+            }
+            .legend-line {
+                display: inline-block;
+                width: 16px;
+                height: 0;
+                border-top: 3px solid #0d6efd;
+                margin-right: 8px;
+                vertical-align: middle;
+            }
+            .legend-pin {
+                display: inline-block;
+                width: 12px;
+                height: 12px;
+                border-radius: 50% 50% 50% 0;
+                transform: rotate(-45deg);
+                margin-right: 8px;
+                vertical-align: middle;
+                border: 1px solid rgba(0, 0, 0, 0.15);
+            }
+            .legend-pin-red {
+                background: #d62f2f;
+            }
+            .legend-pin-green {
+                background: #2ea44f;
+            }
+        </style>
+    </head>
+    <body>
+        <main class="dashboard">
+            <h1 class="page-title">Flashback Mobility Prediction Dashboard</h1>
 
-      return { lossChart, metricsChart };
-    }
+            <section>
+                <h2 class="h4 mb-3">Training Performance</h2>
+                <div class="row g-3">
+                    <div class="col-12 col-lg-6">
+                        <div class="card panel-card p-3">
+                            <h3 class="h6 mb-2">Training Loss vs Epoch</h3>
+                            <div class="chart-wrap">
+                                <canvas id="lossChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6">
+                        <div class="card panel-card p-3">
+                            <h3 class="h6 mb-2">Evaluation Metrics</h3>
+                            <div class="chart-wrap">
+                                <canvas id="metricsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-    function addLegend() {
-      const legend = L.control({ position: "bottomright" });
-      legend.onAdd = function () {
-        const div = L.DomUtil.create("div", "map-legend");
-        div.innerHTML =
-          "<div><span class='legend-dot' style='background:#3388ff;'></span>Visited</div>" +
-          "<div><span style='color:#d62f2f; margin-right:8px;'>?</span>Predicted Next</div>" +
-          "<div><span style='color:#2ea44f; margin-right:8px;'>?</span>True Next</div>" +
-          "<div><span class='legend-line'></span>Trajectory Path</div>";
-        return div;
-      };
-      legend.addTo(map);
-    }
+            <section class="toolbar">
+                <div class="row g-3 align-items-end">
+                    <div class="col-12 col-md-5 col-lg-4">
+                        <label for="userSelect" class="form-label fw-semibold"
+                            >Select User</label
+                        >
+                        <select id="userSelect" class="form-select"></select>
+                    </div>
+                    <div class="col-12 col-md-7 col-lg-8">
+                        <div
+                            id="statusMessage"
+                            class="status-message text-muted"
+                        >
+                            Loading prediction data...
+                        </div>
+                    </div>
+                    <div class="col-12 d-none" id="manualLoadWrap">
+                        <input
+                            id="predictionFileInput"
+                            type="file"
+                            accept=".json,application/json"
+                            class="d-none"
+                        />
+                        <button
+                            id="loadPredictionButton"
+                            type="button"
+                            class="btn btn-outline-primary btn-sm"
+                        >
+                            Load predictions.json
+                        </button>
+                    </div>
+                </div>
+            </section>
 
-    function loadPredictionData() {
-      fetch("results/predictions.json")
-        .then(response => {
-          if (!response.ok) throw new Error("JSON load failed");
-          return response.json();
-        })
-        .then(data => {
-          window.predictionData = data;
-          initializeDropdown(data.users);
-        })
-        .catch(error => {
-          alert("Failed to load predictions.json");
-          console.error(error);
-          updateSummary(null);
-          setStatus("Failed to load results/predictions.json", true);
-        });
-    }
+            <section>
+                <h2 class="h4 mb-3">Spatial Prediction Visualization</h2>
+                <div class="map-wrapper">
+                    <div class="summary-overlay">
+                        <h6>Model Summary</h6>
+                        <p>
+                            <strong>User ID:</strong>
+                            <span id="summaryUser">-</span>
+                        </p>
+                        <p>
+                            <strong>Sequence Length:</strong>
+                            <span id="summarySeqLen">-</span>
+                        </p>
+                        <p><strong>Recall@10:</strong> 0.351</p>
+                        <p><strong>MAP:</strong> 0.196</p>
+                        <p><strong>GPU:</strong> CUDA Enabled</p>
+                    </div>
+                    <div id="map"></div>
+                </div>
+            </section>
+        </main>
 
-    createCharts();
-    addLegend();
-    loadPredictionData();
+        <script>
+            const LOSS_VALUES = [11.17, 9.47, 7.76, 6.43, 5.54];
+            const METRIC_LABELS = ["Recall@1", "Recall@5", "Recall@10", "MAP"];
+            const METRIC_VALUES = [0.119, 0.284, 0.351, 0.196];
 
-    window.addEventListener("load", function () {
-      map.invalidateSize();
-    });
-  </script>
-</body>
+            const userSelect = document.getElementById("userSelect");
+            const statusMessage = document.getElementById("statusMessage");
+            const manualLoadWrap = document.getElementById("manualLoadWrap");
+            const predictionFileInput = document.getElementById(
+                "predictionFileInput",
+            );
+            const loadPredictionButton = document.getElementById(
+                "loadPredictionButton",
+            );
+
+            const map = L.map("map", {
+                center: [40.72, -73.98],
+                zoom: 12,
+                zoomControl: true,
+                preferCanvas: false,
+            });
+
+            const TILE_PROVIDERS = [
+                {
+                    name: "CartoDB Positron",
+                    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+                    options: {
+                        maxZoom: 20,
+                        subdomains: "abcd",
+                        attribution:
+                            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                    },
+                },
+                {
+                    name: "Esri World Street Map",
+                    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+                    options: {
+                        maxZoom: 19,
+                        attribution:
+                            "Tiles &copy; Esri, HERE, Garmin, FAO, NOAA, USGS",
+                    },
+                },
+            ];
+            let activeTileLayer = null;
+
+            function setBaseTileLayer(providerIndex) {
+                if (providerIndex >= TILE_PROVIDERS.length) {
+                    return;
+                }
+
+                const provider = TILE_PROVIDERS[providerIndex];
+                if (activeTileLayer) {
+                    map.removeLayer(activeTileLayer);
+                }
+
+                let tileErrorCount = 0;
+                const layer = L.tileLayer(provider.url, provider.options);
+                layer.on("tileerror", () => {
+                    tileErrorCount += 1;
+                    if (
+                        tileErrorCount >= 4 &&
+                        providerIndex < TILE_PROVIDERS.length - 1
+                    ) {
+                        setStatus(
+                            `${provider.name} blocked. Switching basemap...`,
+                            true,
+                        );
+                        setBaseTileLayer(providerIndex + 1);
+                    }
+                });
+
+                activeTileLayer = layer;
+                activeTileLayer.addTo(map);
+            }
+
+            let layers = [];
+
+            function setStatus(message, isError) {
+                statusMessage.textContent = message;
+                statusMessage.className = isError
+                    ? "status-message text-danger"
+                    : "status-message text-muted";
+            }
+
+            setBaseTileLayer(0);
+
+            function updateSummary(user) {
+                document.getElementById("summaryUser").textContent = user
+                    ? user.user_id
+                    : "-";
+                document.getElementById("summarySeqLen").textContent = user
+                    ? user.sequence_length
+                    : "-";
+            }
+
+            function clearMap() {
+                layers.forEach((layer) => map.removeLayer(layer));
+                layers = [];
+            }
+
+            function haversine(lat1, lon1, lat2, lon2) {
+                const R = 6371;
+                const dLat = ((lat2 - lat1) * Math.PI) / 180;
+                const dLon = ((lon2 - lon1) * Math.PI) / 180;
+                const a =
+                    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos((lat1 * Math.PI) / 180) *
+                        Math.cos((lat2 * Math.PI) / 180) *
+                        Math.sin(dLon / 2) *
+                        Math.sin(dLon / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                return (R * c).toFixed(2);
+            }
+
+            function addLayer(layer) {
+                layer.addTo(map);
+                layers.push(layer);
+                return layer;
+            }
+
+            function renderUser(user) {
+                clearMap();
+
+                if (
+                    !user ||
+                    !Array.isArray(user.visited) ||
+                    user.visited.length === 0 ||
+                    !user.predicted ||
+                    !user.true_next
+                ) {
+                    updateSummary(null);
+                    setStatus(
+                        "No usable location data for selected user.",
+                        true,
+                    );
+                    return;
+                }
+
+                updateSummary(user);
+
+                const boundsPoints = [];
+                const visitedPath = [];
+
+                user.visited.forEach((point) => {
+                    if (
+                        typeof point.lat !== "number" ||
+                        typeof point.lng !== "number"
+                    ) {
+                        return;
+                    }
+                    const latLng = [point.lat, point.lng];
+                    visitedPath.push(latLng);
+                    boundsPoints.push(latLng);
+
+                    const visitedMarker = L.circleMarker(latLng, {
+                        color: "#3388ff",
+                        fillColor: "#3388ff",
+                        fillOpacity: 0.25,
+                        radius: 4,
+                        weight: 2,
+                    }).bindPopup("Visited");
+
+                    addLayer(visitedMarker);
+                });
+
+                if (visitedPath.length > 1) {
+                    const trajectory = L.polyline(visitedPath, {
+                        color: "#0d6efd",
+                        weight: 3,
+                        opacity: 0.9,
+                    }).bindTooltip("User Historical Trajectory");
+
+                    addLayer(trajectory);
+                }
+
+                const predicted = user.predicted;
+                const truth = user.true_next;
+
+                if (
+                    typeof predicted.lat !== "number" ||
+                    typeof predicted.lng !== "number" ||
+                    typeof truth.lat !== "number" ||
+                    typeof truth.lng !== "number"
+                ) {
+                    setStatus(
+                        "Selected user has invalid predicted/true coordinates.",
+                        true,
+                    );
+                    return;
+                }
+
+                const errorKm = haversine(
+                    predicted.lat,
+                    predicted.lng,
+                    truth.lat,
+                    truth.lng,
+                );
+                const confidencePercent = (predicted.confidence * 100).toFixed(
+                    1,
+                );
+
+                const redIcon = L.icon({
+                    iconUrl:
+                        "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+                    shadowUrl:
+                        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.3/images/marker-shadow.png",
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41],
+                });
+
+                const greenIcon = L.icon({
+                    iconUrl:
+                        "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
+                    shadowUrl:
+                        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.3/images/marker-shadow.png",
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41],
+                });
+
+                const predMarker = L.marker([predicted.lat, predicted.lng], {
+                    icon: redIcon,
+                }).bindPopup(
+                    `Predicted Next<br>Prediction Error: ${errorKm} km<br>Confidence: ${confidencePercent}%`,
+                );
+                addLayer(predMarker);
+
+                const trueMarker = L.marker([truth.lat, truth.lng], {
+                    icon: greenIcon,
+                }).bindPopup("True Next");
+                addLayer(trueMarker);
+
+                boundsPoints.push([predicted.lat, predicted.lng]);
+                boundsPoints.push([truth.lat, truth.lng]);
+
+                if (boundsPoints.length > 0) {
+                    map.fitBounds(boundsPoints, { padding: [35, 35] });
+                }
+
+                setStatus(
+                    `Rendered user ${user.user_id} | Prediction Error: ${errorKm} km`,
+                    false,
+                );
+                predMarker.openPopup();
+            }
+
+            function initializeDropdown(users) {
+                userSelect.innerHTML = "";
+
+                if (!Array.isArray(users) || users.length === 0) {
+                    updateSummary(null);
+                    setStatus("No users found in predictions JSON.", true);
+                    const option = document.createElement("option");
+                    option.textContent = "No users available";
+                    option.value = "";
+                    userSelect.appendChild(option);
+                    userSelect.disabled = true;
+                    return;
+                }
+
+                users.forEach((user, index) => {
+                    const option = document.createElement("option");
+                    option.value = String(index);
+                    option.textContent = `User ${user.user_id}`;
+                    userSelect.appendChild(option);
+                });
+
+                userSelect.disabled = false;
+                userSelect.onchange = function () {
+                    const index = Number(userSelect.value);
+                    renderUser(window.predictionData.users[index]);
+                };
+
+                userSelect.value = "0";
+                renderUser(users[0]);
+            }
+
+            function createCharts() {
+                const lossCtx = document.getElementById("lossChart");
+                const metricsCtx = document.getElementById("metricsChart");
+
+                const lossChart = new Chart(lossCtx, {
+                    type: "line",
+                    data: {
+                        labels: [1, 2, 3, 4, 5],
+                        datasets: [
+                            {
+                                label: "Loss",
+                                data: LOSS_VALUES,
+                                borderColor: "#0d6efd",
+                                backgroundColor: "rgba(13,110,253,0.14)",
+                                pointBackgroundColor: "#0d6efd",
+                                fill: true,
+                                tension: 0.2,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true },
+                        },
+                        scales: {
+                            x: { title: { display: true, text: "Epoch" } },
+                            y: { title: { display: true, text: "Loss" } },
+                        },
+                    },
+                });
+
+                const metricsChart = new Chart(metricsCtx, {
+                    type: "bar",
+                    data: {
+                        labels: METRIC_LABELS,
+                        datasets: [
+                            {
+                                label: "Score",
+                                data: METRIC_VALUES,
+                                backgroundColor: [
+                                    "#0d6efd",
+                                    "#198754",
+                                    "#0dcaf0",
+                                    "#fd7e14",
+                                ],
+                                borderRadius: 6,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true },
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                suggestedMax: 0.4,
+                                title: { display: true, text: "Score" },
+                            },
+                        },
+                    },
+                });
+
+                return { lossChart, metricsChart };
+            }
+
+            function addLegend() {
+                const legend = L.control({ position: "bottomright" });
+                legend.onAdd = function () {
+                    const div = L.DomUtil.create("div", "map-legend");
+                    div.innerHTML =
+                        "<div><span class='legend-dot' style='background:#3388ff;'></span>Visited</div>" +
+                        "<div><span class='legend-pin legend-pin-red'></span>Predicted Next</div>" +
+                        "<div><span class='legend-pin legend-pin-green'></span>Actual Next</div>" +
+                        "<div><span class='legend-line'></span>Trajectory Path</div>";
+                    return div;
+                };
+                legend.addTo(map);
+            }
+
+            function applyPredictionData(data) {
+                if (!data || !Array.isArray(data.users)) {
+                    throw new Error(
+                        "Invalid predictions JSON format: expected { users: [...] }",
+                    );
+                }
+                window.predictionData = data;
+                initializeDropdown(data.users);
+                if (manualLoadWrap) manualLoadWrap.classList.add("d-none");
+            }
+
+            function fetchPredictionData() {
+                return fetch("results/predictions.json").then((response) => {
+                    if (!response.ok) throw new Error("JSON load failed");
+                    return response.json();
+                });
+            }
+
+            function showManualFileLoader() {
+                if (manualLoadWrap) manualLoadWrap.classList.remove("d-none");
+            }
+
+            function pickPredictionFile() {
+                return new Promise((resolve, reject) => {
+                    if (!predictionFileInput) {
+                        reject(new Error("File input not available"));
+                        return;
+                    }
+
+                    predictionFileInput.onchange = () => {
+                        const file =
+                            predictionFileInput.files &&
+                            predictionFileInput.files[0];
+                        if (!file) {
+                            reject(new Error("No file selected"));
+                            return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            try {
+                                resolve(JSON.parse(reader.result));
+                            } catch (err) {
+                                reject(err);
+                            }
+                        };
+                        reader.onerror = () => {
+                            reject(new Error("Failed to read selected file"));
+                        };
+                        reader.readAsText(file);
+                    };
+
+                    predictionFileInput.click();
+                });
+            }
+
+            function loadPredictionData() {
+                if (window.location.protocol === "file:") {
+                    showManualFileLoader();
+                    setStatus(
+                        "Running in local file mode. Click 'Load predictions.json' to continue.",
+                        true,
+                    );
+                    return;
+                }
+
+                fetchPredictionData()
+                    .then(applyPredictionData)
+                    .catch((error) => {
+                        console.error(error);
+                        alert("Failed to load predictions.json");
+                        updateSummary(null);
+                        setStatus(
+                            "Failed to load results/predictions.json",
+                            true,
+                        );
+                    });
+            }
+
+            createCharts();
+            addLegend();
+
+            if (loadPredictionButton) {
+                loadPredictionButton.addEventListener("click", () => {
+                    pickPredictionFile()
+                        .then((data) => {
+                            applyPredictionData(data);
+                            setStatus(
+                                "Loaded predictions from selected local file.",
+                                false,
+                            );
+                        })
+                        .catch((error) => {
+                            console.error(error);
+                            updateSummary(null);
+                            setStatus(
+                                "Failed to load selected predictions JSON.",
+                                true,
+                            );
+                        });
+                });
+            }
+
+            loadPredictionData();
+
+            window.addEventListener("load", function () {
+                map.invalidateSize();
+            });
+        </script>
+    </body>
 </html>
